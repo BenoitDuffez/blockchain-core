@@ -177,6 +177,7 @@
     staking_fee_txn_oui_v1_per_address/1,
     staking_fee_txn_add_gateway_v1/1,
     staking_fee_txn_assert_location_v1/1,
+    staking_fee_txn_assert_location_v2/1,
     staking_keys/1,
     txn_fee_multiplier/1,
 
@@ -1713,14 +1714,27 @@ txn_fee_multiplier(Ledger)->
         {error, not_found} -> 1;
         {ok, V} -> V
     end.
+
 %%--------------------------------------------------------------------
-%% @doc  get staking fee chain var value for add gateway
+%% @doc  get staking fee chain var value for assert_location_v1
 %% or return default
 %% @end
 %%--------------------------------------------------------------------
 -spec staking_fee_txn_assert_location_v1(Ledger :: ledger()) -> pos_integer().
 staking_fee_txn_assert_location_v1(Ledger)->
     case blockchain:config(?staking_fee_txn_assert_location_v1, Ledger) of
+        {error, not_found} -> 1;
+        {ok, V} -> V
+    end.
+
+%%--------------------------------------------------------------------
+%% @doc  get staking fee chain var value for assert_location_v2
+%% or return default
+%% @end
+%%--------------------------------------------------------------------
+-spec staking_fee_txn_assert_location_v2(Ledger :: ledger()) -> pos_integer().
+staking_fee_txn_assert_location_v2(Ledger)->
+    case blockchain:config(?staking_fee_txn_assert_location_v2, Ledger) of
         {error, not_found} -> 1;
         {ok, V} -> V
     end.
