@@ -220,8 +220,7 @@ is_valid_payer(#blockchain_txn_assert_location_v2_pb{payer=PubKeyBin,
     PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
     libp2p_crypto:verify(EncodedTxn, Signature, PubKey).
 
--spec is_valid(Txn :: txn_assert_location(),
-               Chain :: blockchain:blockchain()) -> ok | {error, any()}.
+-spec is_valid(txn_assert_location(), blockchain:blockchain()) -> ok | {error, any()}.
 is_valid(Txn, Chain) ->
     Gateway = ?MODULE:gateway(Txn),
     Owner = ?MODULE:owner(Txn),
@@ -246,9 +245,9 @@ do_is_valid_checks(Txn, Chain) ->
     case {?MODULE:is_valid_owner(Txn),
           ?MODULE:is_valid_payer(Txn)} of
         {false, _} ->
-            {error, bad_owner_signature};
+            {error, {bad_owner_signature, {assert_location_v2, owner(Txn)}}};
         {_, false} ->
-            {error, bad_payer_signature};
+            {error, {bad_payer_signature, {assert_location_v2, payer(Txn)}}};
         {true, true} ->
             Owner = ?MODULE:owner(Txn),
             Nonce = ?MODULE:nonce(Txn),
@@ -264,9 +263,9 @@ do_is_valid_checks(Txn, Chain) ->
             ExpectedTxnFee = calculate_fee(Txn, Chain),
             case {(ExpectedTxnFee =< TxnFee orelse not AreFeesEnabled), ExpectedStakingFee == StakingFee} of
                 {false,_} ->
-                    {error, {wrong_txn_fee, ExpectedTxnFee, TxnFee}};
+                    {error, {wrong_txn_fee, {assert_location_v2, ExpectedTxnFee, TxnFee}}};
                 {_,false} ->
-                    {error, {wrong_staking_fee, ExpectedStakingFee, StakingFee}};
+                    {error, {wrong_staking_fee, {assert_location_v2, ExpectedStakingFee, StakingFee}}};
                 {true, true} ->
                     case blockchain_ledger_v2:check_dc_or_hnt_balance(ActualPayer, TxnFee + StakingFee, Ledger, AreFeesEnabled) of
                         {error, _}=Error ->
@@ -275,23 +274,23 @@ do_is_valid_checks(Txn, Chain) ->
                             Gateway = ?MODULE:gateway(Txn),
                             case blockchain_gateway_cache:get(Gateway, Ledger) of
                                 {error, _} ->
-                                    {error, {unknown_gateway, Gateway, Ledger}};
+                                    {error, {unknown_gateway, {assert_location_v2, Gateway, Ledger}}};
                                 {ok, GwInfo} ->
                                     GwOwner = blockchain_ledger_gateway_v2:owner_address(GwInfo),
                                     case Owner == GwOwner of
                                         false ->
-                                            {error, {bad_owner, {assert_location, Owner, GwOwner}}};
+                                            {error, {bad_owner, {assert_location_v2, Owner, GwOwner}}};
                                         true ->
                                             {ok, MinAssertH3Res} = blockchain:config(?min_assert_h3_res, Ledger),
                                             Location = ?MODULE:location(Txn),
                                             case ?MODULE:is_valid_location(Txn, MinAssertH3Res) of
                                                 false ->
-                                                    {error, {insufficient_assert_res, {assert_location, Location, Gateway}}};
+                                                    {error, {insufficient_assert_res, {assert_location_v2, Location, Gateway}}};
                                                 true ->
                                                     LedgerNonce = blockchain_ledger_gateway_v2:nonce(GwInfo),
                                                     case Nonce =:= LedgerNonce + 1 of
                                                         false ->
-                                                            {error, {bad_nonce, {assert_location, Nonce, LedgerNonce}}};
+                                                            {error, {bad_nonce, {assert_location_v2, Nonce, LedgerNonce}}};
                                                         true ->
                                                             ok
                                                     end
