@@ -301,11 +301,14 @@ do_is_valid_checks(Txn, Chain) ->
             end
     end.
 
--spec absorb(Txn :: txn_assert_location(),
-             Chain :: blockchain:blockchain()) -> ok | {error, any()}.
+%%--------------------------------------------------------------------
+%% @doc
+%% @end
+%%--------------------------------------------------------------------
+-spec absorb(txn_assert_location(), blockchain:blockchain()) -> ok | {error, atom()} | {error, {atom(), any()}}.
 absorb(Txn, Chain) ->
     Ledger = blockchain:ledger(Chain),
-    AreFeesEnabled = blockchain_ledger_v2:txn_fees_active(Ledger),
+    AreFeesEnabled = blockchain_ledger_v1:txn_fees_active(Ledger),
     Gateway = ?MODULE:gateway(Txn),
     Owner = ?MODULE:owner(Txn),
     Location = ?MODULE:location(Txn),
@@ -319,11 +322,11 @@ absorb(Txn, Chain) ->
     end,
 
     {ok, OldGw} = blockchain_gateway_cache:get(Gateway, Ledger, false),
-    case blockchain_ledger_v2:debit_fee(ActualPayer, Fee + StakingFee, Ledger, AreFeesEnabled) of
+    case blockchain_ledger_v1:debit_fee(ActualPayer, Fee + StakingFee, Ledger, AreFeesEnabled) of
         {error, _Reason}=Error ->
             Error;
         ok ->
-            blockchain_ledger_v2:add_gateway_location(Gateway, Location, Nonce, Ledger),
+            blockchain_ledger_v1:add_gateway_location(Gateway, Location, Nonce, Ledger),
             %% hex index update code needs to be unconditional and hard-coded
             %% until we have chain var update hook
             %% {ok, Res} = blockchain:config(?poc_target_hex_parent_res, Ledger),
@@ -337,17 +340,39 @@ absorb(Txn, Chain) ->
                         h3:parent(OldLoc, Res)
                 end,
             Hex = h3:parent(Location, Res),
-            case Hex of
-                OldHex ->
-                    %% moved within the hex, no need to update
-                    ok;
-                _ when OldHex == undefined ->
-                    blockchain_ledger_v2:add_to_hex(Hex, Gateway, Ledger);
-                _ ->
-                    blockchain_ledger_v2:remove_from_hex(OldHex, Gateway, Ledger),
-                    blockchain_ledger_v2:add_to_hex(Hex, Gateway, Ledger)
-            end,
 
+            case {OldLoc, Location, Hex} of
+                {undefined, New, H} ->
+                    %% no previous location
+
+                    %% add new hex
+                    blockchain_ledger_v1:add_to_hex(H, Gateway, Ledger),
+                    %% add new location of this gateway to h3dex
+                    blockchain_ledger_v1:add_gw_to_hex(New, Gateway, Ledger);
+                {Old, Old, _H} ->
+                    %% why even check this, same loc as old loc
+                    ok;
+                {Old, New, H} when H == OldHex ->
+                    %% moved within the same Hex
+
+                    %% remove old location of this gateway from h3dex
+                    blockchain_ledger_v1:remove_gw_from_hex(Old, Gateway, Ledger),
+
+                    %% add new location of this gateway to h3dex
+                    blockchain_ledger_v1:add_gw_to_hex(New, Gateway, Ledger);
+                {Old, New, H} ->
+                    %% moved to a different hex
+
+                    %% remove this hex
+                    blockchain_ledger_v1:remove_from_hex(OldHex, Gateway, Ledger),
+                    %% add new hex
+                    blockchain_ledger_v1:add_to_hex(H, Gateway, Ledger),
+
+                    %% remove old location of this gateway from h3dex
+                    blockchain_ledger_v1:remove_gw_from_hex(Old, Gateway, Ledger),
+                    %% add new location of this gateway to h3dex
+                    blockchain_ledger_v1:add_gw_to_hex(New, Gateway, Ledger)
+            end,
 
             case blockchain:config(?poc_version, Ledger) of
                 {ok, V} when V > 3 ->
@@ -355,12 +380,12 @@ absorb(Txn, Chain) ->
                     ok;
                 _ ->
                     %% TODO gc this nonsense in some deterministic way
-                    Gateways = blockchain_ledger_v2:active_gateways(Ledger),
+                    Gateways = blockchain_ledger_v1:active_gateways(Ledger),
                     Neighbors = blockchain_poc_path:neighbors(Gateway, Gateways, Ledger),
                     {ok, Gw} = blockchain_gateway_cache:get(Gateway, Ledger, false),
-                    ok = blockchain_ledger_v2:fixup_neighbors(Gateway, Gateways, Neighbors, Ledger),
+                    ok = blockchain_ledger_v1:fixup_neighbors(Gateway, Gateways, Neighbors, Ledger),
                     Gw1 = blockchain_ledger_gateway_v2:neighbors(Neighbors, Gw),
-                    ok = blockchain_ledger_v2:update_gateway(Gw1, Gateway, Ledger)
+                    ok = blockchain_ledger_v1:update_gateway(Gw1, Gateway, Ledger)
 
             end
     end.
